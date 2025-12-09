@@ -187,7 +187,8 @@ export async function loginWithPassword(
 export interface CurrentUser {
     id: string;
     email: string;
-    // add more fields as needed later
+    role?: string;
+    tenant_id?: string;
 }
 
 export async function fetchCurrentUser(

@@ -9,6 +9,7 @@ import {
 import {
     ApiError,
     clearToken,
+    devBootstrap,
     fetchCurrentUser,
     getStoredToken,
     loginWithPassword,
@@ -21,6 +22,7 @@ interface AuthContextValue {
     token: string | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
+    devBootstrapLogin: () => Promise<void>;
     logout: () => void;
 }
 
@@ -98,15 +100,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         [logout],
     );
 
+    const devBootstrapLogin = useCallback(async () => {
+        setLoading(true);
+        try {
+            const resp = await devBootstrap();
+            // store JWT
+            storeToken(resp.access_token);
+            setToken(resp.access_token);
+
+            const me = await fetchCurrentUser(() => {
+                logout();
+            });
+            setUser(me);
+        } catch (err) {
+            if (err instanceof ApiError) {
+                // Let caller show a useful error message (e.g. when disabled)
+                throw err;
+            }
+            throw new Error("Dev bootstrap login failed");
+        } finally {
+            setLoading(false);
+        }
+    }, [logout]);
+
+
     const value = useMemo<AuthContextValue>(
         () => ({
             user,
             token,
             loading,
             login,
+            devBootstrapLogin,
             logout,
         }),
-        [user, token, loading, login, logout],
+        [user, token, loading, login, devBootstrapLogin, logout],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

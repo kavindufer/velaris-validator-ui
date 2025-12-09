@@ -12,7 +12,7 @@ type LocationState = {
 };
 
 export default function LoginPage() {
-    const { user, login, loading } = useAuth();
+    const { user, login, loading, devBootstrapLogin } = useAuth();
 
     // Typed location state instead of `as any`
     const location = useLocation() as { state?: LocationState };
@@ -21,7 +21,9 @@ export default function LoginPage() {
     const [email, setEmail] = useState("demo@tenant.local");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
+    const [devError, setDevError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [devBootstrapping, setDevBootstrapping] = useState(false);
 
     if (user) {
         return <Navigate to={from} replace />;
@@ -30,6 +32,7 @@ export default function LoginPage() {
     async function handleSubmit(event: FormEvent) {
         event.preventDefault();
         setError(null);
+        setDevError(null);
         setSubmitting(true);
         try {
             await login(email, password);
@@ -43,6 +46,26 @@ export default function LoginPage() {
             }
         } finally {
             setSubmitting(false);
+        }
+    }
+
+    async function handleDevBootstrapClick() {
+        setError(null);
+        setDevError(null);
+        setDevBootstrapping(true);
+        try {
+            await devBootstrapLogin();
+            // On success, AuthContext will set user and router will redirect
+        } catch (err) {
+            if (err instanceof ApiError) {
+                setDevError(err.message);
+            } else if (err instanceof Error) {
+                setDevError(err.message);
+            } else {
+                setDevError("Unexpected error during dev bootstrap");
+            }
+        } finally {
+            setDevBootstrapping(false);
         }
     }
 
@@ -63,6 +86,12 @@ export default function LoginPage() {
                     </code>
                     .
                 </p>
+
+                {(error || devError) && (
+                    <div className="mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                        {error ?? devError}
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-1">
@@ -93,20 +122,32 @@ export default function LoginPage() {
                         />
                     </div>
 
-                    {error && (
-                        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
-                            {error}
-                        </div>
-                    )}
-
                     <button
                         type="submit"
-                        disabled={submitting || loading}
+                        disabled={submitting || loading || devBootstrapping}
                         className="w-full rounded-lg bg-sky-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         {submitting || loading ? "Signing in…" : "Sign in"}
                     </button>
                 </form>
+
+                <button
+                    type="button"
+                    onClick={handleDevBootstrapClick}
+                    disabled={submitting || loading || devBootstrapping}
+                    className="mt-3 w-full rounded-lg border border-sky-500/60 bg-slate-900/80 px-3 py-1.5 text-sm font-medium text-sky-100 hover:bg-sky-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                    {devBootstrapping || loading
+                        ? "Bootstrapping dev tenant…"
+                        : "Dev: Create tenant & sign in"}
+                </button>
+
+                <p className="mt-2 text-[11px] text-slate-500">
+                    Dev helper: calls{" "}
+                    <code className="font-mono">/auth/dev/bootstrap</code>. Requires{" "}
+                    <code className="font-mono">ENABLE_DEV_AUTH_BOOTSTRAP=1</code> on the
+                    backend.
+                </p>
 
                 <p className="mt-4 text-[11px] text-slate-500">
                     Backend base URL:{" "}

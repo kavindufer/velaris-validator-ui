@@ -183,6 +183,51 @@ export async function loginWithPassword(
     return data;
 }
 
+export interface DevBootstrapRequest {
+    tenant_name?: string;
+    admin_email?: string;
+    admin_password?: string;
+}
+
+export interface DevBootstrapResponse {
+    tenant_id: string;
+    admin_user_id: string;
+    admin_email: string;
+    access_token: string;
+}
+
+export async function devBootstrap(
+    body?: DevBootstrapRequest,
+): Promise<DevBootstrapResponse> {
+    const res = await fetch(buildUrl("/auth/dev/bootstrap"), {
+        method: "POST",
+        headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body ?? {}),
+    });
+
+    if (!res.ok) {
+        let details: unknown;
+        try {
+            details = await res.json();
+        } catch {
+            details = undefined;
+        }
+
+        const message =
+            (details as any)?.detail ??
+            (details as any)?.message ??
+            `Dev bootstrap failed with status ${res.status}`;
+
+        throw new ApiError(message, res.status, details);
+    }
+
+    const data = (await res.json()) as DevBootstrapResponse;
+    return data;
+}
+
 // minimal shape of /auth/me response
 export interface CurrentUser {
     id: string;

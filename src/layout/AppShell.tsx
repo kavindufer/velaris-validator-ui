@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useStripeStatus } from "../hooks/useStripeStatus";
 
 function classNames(...values: Array<string | false | null | undefined>): string {
     return values.filter(Boolean).join(" ");
@@ -7,6 +8,30 @@ function classNames(...values: Array<string | false | null | undefined>): string
 
 export default function AppShell() {
     const { user, logout } = useAuth();
+    const { status: stripeStatus, loading: stripeLoading } = useStripeStatus();
+
+    const stripeLabel =
+        stripeStatus === "configured"
+            ? "Stripe: configured"
+            : stripeStatus === "not_configured"
+                ? "Stripe: not configured"
+                : stripeStatus === "error"
+                    ? "Stripe: error"
+                    : "Stripe: checking…";
+
+    const stripeClasses = (() => {
+        if (stripeLoading || stripeStatus === "unknown") {
+            return "border-slate-600 bg-slate-900 text-slate-200";
+        }
+        if (stripeStatus === "configured") {
+            return "border-emerald-500/60 bg-emerald-900/40 text-emerald-100";
+        }
+        if (stripeStatus === "error") {
+            return "border-red-500/60 bg-red-900/40 text-red-100";
+        }
+        // not_configured
+        return "border-amber-500/60 bg-amber-900/40 text-amber-100";
+    })();
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -23,7 +48,18 @@ export default function AppShell() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4 text-xs">
+                    <div className="flex items-center gap-3 text-xs">
+            <span
+                className={classNames(
+                    "inline-flex items-center gap-1 rounded-full border px-3 py-1",
+                    "text-[11px] font-medium",
+                    stripeClasses,
+                )}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                {stripeLabel}
+            </span>
+
                         {user && (
                             <span className="text-slate-300">
                 {user.email}

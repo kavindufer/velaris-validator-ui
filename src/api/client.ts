@@ -140,6 +140,14 @@ export function apiPost<T>(
     return apiRequest<T>("POST", path, { ...options, body });
 }
 
+export function apiPut<T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, "body">,
+): Promise<T> {
+    return apiRequest<T>("PUT", path, { ...options, body });
+}
+
 export function apiPatch<T>(
     path: string,
     body?: unknown,

@@ -49,20 +49,20 @@ export default function AppShell() {
                 <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
                     {/* Brand */}
                     <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500 text-sm font-bold text-slate-950">
-                            VV
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/90 text-slate-950 shadow">
+                            <span className="text-sm font-bold">VV</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-sm font-semibold">
+                            <span className="text-sm font-semibold tracking-tight">
                                 Velaris Validator
                             </span>
-                            <span className="text-xs text-slate-400">
-                                Operator UI
+                            <span className="text-[11px] text-slate-400">
+                                {isSuperadmin ? "Operator UI" : "Tenant workspace"}
                             </span>
                         </div>
                     </div>
 
-                    {/* Stripe pill + user info */}
+                    {/* Right side: Stripe & user */}
                     <div className="flex items-center gap-4">
                         <span
                             className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${stripeClasses}`}
@@ -96,64 +96,45 @@ export default function AppShell() {
                 <div className="border-t border-slate-800">
                     <div className="mx-auto flex max-w-6xl items-center px-6">
                         <nav className="flex gap-4 py-2">
-                            {/* Tenant operator nav (non-superadmin) */}
-                            {!isSuperadmin && (
+                            {isSuperadmin ? (
+                                // SUPERADMIN – operator navigation only
+                                <>
+                                    <NavLink
+                                        to="/admin/overview"
+                                        className={({ isActive }) => adminTabClass(isActive)}
+                                    >
+                                        Overview
+                                    </NavLink>
+                                    <NavLink
+                                        to="/admin/tenants"
+                                        className={({ isActive }) => adminTabClass(isActive)}
+                                    >
+                                        Tenants
+                                    </NavLink>
+                                </>
+                            ) : (
+                                // Tenant operators – rules / jobs only
                                 <>
                                     <NavLink
                                         to="/rules"
-                                        className={({ isActive }) =>
-                                            tabClass(isActive)
-                                        }
+                                        className={({ isActive }) => tabClass(isActive)}
                                     >
                                         Rules
                                     </NavLink>
-
                                     <NavLink
                                         to="/jobs"
-                                        className={({ isActive }) =>
-                                            tabClass(isActive)
-                                        }
+                                        className={({ isActive }) => tabClass(isActive)}
                                     >
                                         Jobs
                                     </NavLink>
                                 </>
                             )}
-
-                            {/* Admin section (superadmins only) */}
-                            {isSuperadmin && (
-                                <>
-                                    <span className="self-center text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                        Admin
-                                    </span>
-
-                                    <NavLink
-                                        to="/admin/overview"
-                                        className={({ isActive }) =>
-                                            adminTabClass(isActive)
-                                        }
-                                    >
-                                        Overview
-                                    </NavLink>
-
-                                    <NavLink
-                                        to="/admin/tenants"
-                                        className={({ isActive }) =>
-                                            adminTabClass(isActive)
-                                        }
-                                    >
-                                        Tenants
-                                    </NavLink>
-                                </>
-                            )}
-
-                            {/* If you ever want both operator + admin for SUPERADMIN,
-                                you can show both blocks instead of hiding the first. */}
                         </nav>
                     </div>
                 </div>
             </header>
 
-            {/* Page content */}
+            {/* Main content */}
             <main className="mx-auto max-w-6xl px-6 py-6">
                 <Outlet />
             </main>

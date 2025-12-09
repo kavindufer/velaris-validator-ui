@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiGet } from "../api/client";
 import type { SimpleValidationRule, ValidationRule } from "../types/api";
+import { useAuth } from "../context/AuthContext";
 
 function formatDslSummary(dsl: SimpleValidationRule | undefined): string {
     if (!dsl) return "-";
@@ -26,6 +27,9 @@ function formatStatus(status: string): string {
 }
 
 export default function RulesListPage() {
+    const { user } = useAuth();
+    const canCreateRule = user?.role === "ADMIN";
+
     const [rules, setRules] = useState<ValidationRule[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -74,9 +78,19 @@ export default function RulesListPage() {
     if (error) {
         return (
             <div className="space-y-3">
-                <h1 className="text-lg font-semibold text-slate-100">
-                    Validation rules
-                </h1>
+                <div className="flex items-center justify-between">
+                    <h1 className="text-lg font-semibold text-slate-100">
+                        Validation rules
+                    </h1>
+                    {canCreateRule && (
+                        <Link
+                            to="/rules/new"
+                            className="rounded-md bg-sky-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-sky-400"
+                        >
+                            New rule
+                        </Link>
+                    )}
+                </div>
                 <div className="rounded-md border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
                     <p className="font-medium">Failed to load rules</p>
                     <p className="mt-1 text-xs text-red-200/90">{error}</p>
@@ -87,14 +101,28 @@ export default function RulesListPage() {
 
     return (
         <div className="space-y-4">
-            <div>
-                <h1 className="text-lg font-semibold text-slate-100">
-                    Validation rules
-                </h1>
-                <p className="mt-1 text-sm text-slate-400">
-                    Rules are loaded from <code className="rounded bg-slate-900 px-1.5 py-0.5 text-xs">GET /validation-rules</code>.
-                    Click a row to see details and run a job.
-                </p>
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <h1 className="text-lg font-semibold text-slate-100">
+                        Validation rules
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-400">
+                        Rules are loaded from{" "}
+                        <code className="rounded bg-slate-900 px-1.5 py-0.5 text-xs">
+                            GET /validation-rules
+                        </code>
+                        . Click a row to see details and run a job.
+                    </p>
+                </div>
+
+                {canCreateRule && (
+                    <Link
+                        to="/rules/new"
+                        className="rounded-md bg-sky-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-sky-400"
+                    >
+                        New rule
+                    </Link>
+                )}
             </div>
 
             {!hasRules ? (
@@ -140,12 +168,12 @@ export default function RulesListPage() {
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-xs text-slate-300">
-                                    {rule.mapping_id ?? <span className="text-slate-500">—</span>}
+                                    {rule.mapping_id ?? (
+                                        <span className="text-slate-500">—</span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-2">
-                    <span
-                        className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs font-medium text-slate-200"
-                    >
+                    <span className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs font-medium text-slate-200">
                       {formatStatus(rule.status)}
                     </span>
                                 </td>

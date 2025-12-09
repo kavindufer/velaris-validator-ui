@@ -1,4 +1,3 @@
-// src/App.tsx
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
@@ -6,6 +5,8 @@ import AppShell from "./layout/AppShell";
 import LoginPage from "./pages/LoginPage";
 import RulesListPage from "./pages/RulesListPage";
 import RuleDetailPage from "./pages/RuleDetailPage";
+import RuleCreatePage from "./pages/RuleCreatePage";
+import RuleEditPage from "./pages/RuleEditPage";
 import JobsListPage from "./pages/JobsListPage";
 import JobDetailPage from "./pages/JobDetailPage";
 
@@ -42,6 +43,8 @@ export default function App() {
             >
                 <Route index element={<Navigate to="/rules" replace />} />
                 <Route path="rules" element={<RulesListPage />} />
+                <Route path="rules/new" element={<RuleCreatePage />} />
+                <Route path="rules/:ruleId/edit" element={<RuleEditPage />} />
                 <Route path="rules/:ruleId" element={<RuleDetailPage />} />
                 <Route path="jobs" element={<JobsListPage />} />
                 <Route path="jobs/:jobId" element={<JobDetailPage />} />

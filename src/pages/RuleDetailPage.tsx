@@ -1,13 +1,16 @@
+// src/pages/RuleDetailPage.tsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiPost } from "../api/client";
 import type { ValidationJob, ValidationRule } from "../types/api";
+import { useAuth } from "../context/AuthContext";
 
 type RunState = "idle" | "running" | "success" | "error";
 
 export default function RuleDetailPage() {
     const { ruleId } = useParams<{ ruleId: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     const [rule, setRule] = useState<ValidationRule | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
@@ -26,7 +29,7 @@ export default function RuleDetailPage() {
                 setLoading(true);
                 setError(null);
                 const data = await apiGet<ValidationRule>(
-                    `/validation-rules/${encodeURIComponent(ruleId)}`
+                    `/validation-rules/${encodeURIComponent(ruleId)}`,
                 );
                 if (!cancelled) {
                     setRule(data);
@@ -81,6 +84,11 @@ export default function RuleDetailPage() {
         void triggerRun("preview");
     };
 
+    const handleEditRule = () => {
+        if (!rule) return;
+        navigate(`/rules/${encodeURIComponent(rule.id)}/edit`);
+    };
+
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center text-sm text-slate-300">
@@ -122,8 +130,12 @@ export default function RuleDetailPage() {
 
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
-                    <h1 className="text-lg font-semibold text-slate-100">{rule.name}</h1>
-                    <p className="mt-1 text-sm text-slate-400">{rule.description}</p>
+                    <h1 className="text-lg font-semibold text-slate-100">
+                        {rule.name}
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-400">
+                        {rule.description}
+                    </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -143,6 +155,15 @@ export default function RuleDetailPage() {
                     >
                         Run full job
                     </button>
+                    {user?.role === "ADMIN" && (
+                        <button
+                            type="button"
+                            onClick={handleEditRule}
+                            className="rounded-md border border-sky-500/60 bg-slate-900 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-500/10"
+                        >
+                            Edit rule
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -159,15 +180,17 @@ export default function RuleDetailPage() {
                         <div className="flex justify-between gap-3">
                             <dt className="text-slate-400">Mapping ID</dt>
                             <dd className="text-slate-200">
-                                {rule.mapping_id ?? <span className="text-slate-500">—</span>}
+                                {rule.mapping_id ?? (
+                                    <span className="text-slate-500">—</span>
+                                )}
                             </dd>
                         </div>
                         <div className="flex justify-between gap-3">
                             <dt className="text-slate-400">Status</dt>
                             <dd>
-                <span className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-slate-200">
-                  {rule.status}
-                </span>
+                                <span className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-slate-200">
+                                    {rule.status}
+                                </span>
                             </dd>
                         </div>
                         <div className="flex justify-between gap-3">
@@ -180,8 +203,12 @@ export default function RuleDetailPage() {
                         </div>
                         {rule.dsl?.filter && (
                             <div className="flex gap-3">
-                                <dt className="mt-0.5 min-w-[80px] text-slate-400">Filter</dt>
-                                <dd className="flex-1 text-slate-200">{rule.dsl.filter}</dd>
+                                <dt className="mt-0.5 min-w-[80px] text-slate-400">
+                                    Filter
+                                </dt>
+                                <dd className="flex-1 text-slate-200">
+                                    {rule.dsl.filter}
+                                </dd>
                             </div>
                         )}
                     </dl>
@@ -192,8 +219,8 @@ export default function RuleDetailPage() {
                         Raw DSL JSON
                     </h2>
                     <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-slate-950/70 p-3 text-xs text-slate-200">
-            {JSON.stringify(rule.dsl, null, 2)}
-          </pre>
+                        {JSON.stringify(rule.dsl, null, 2)}
+                    </pre>
                 </div>
             </div>
 

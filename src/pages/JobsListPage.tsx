@@ -5,9 +5,53 @@ import type { ValidationJob, ValidationRule } from "../types/api";
 
 type StatusFilter = "all" | "pending" | "running" | "success" | "failed";
 
+function formatDate(value: string | null): string {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+}
+
+function statusChipClass(status: string): string {
+    switch (status) {
+        case "success":
+            return "border-emerald-500/50 bg-emerald-900/40 text-emerald-100";
+        case "failed":
+            return "border-red-500/50 bg-red-900/40 text-red-100";
+        case "running":
+            return "border-sky-500/50 bg-sky-900/40 text-sky-100";
+        case "pending":
+            return "border-slate-500/60 bg-slate-900/60 text-slate-100";
+        default:
+            return "border-slate-600 bg-slate-900 text-slate-100";
+    }
+}
+
+function backingSourceLabel(backingSource?: string): string {
+    if (backingSource === "stripe_live") return "Stripe";
+    if (backingSource === "sample_data") return "Sample";
+    if (!backingSource) return "Unknown";
+    return backingSource;
+}
+
+function backingSourceBadgeClass(backingSource?: string): string {
+    if (backingSource === "stripe_live") {
+        return "border-emerald-500/60 bg-emerald-900/40 text-emerald-100";
+    }
+    if (backingSource === "sample_data") {
+        return "border-sky-500/60 bg-sky-900/40 text-sky-100";
+    }
+    if (!backingSource) {
+        return "border-slate-600 bg-slate-900/60 text-slate-200";
+    }
+    return "border-slate-500/60 bg-slate-900/60 text-slate-100";
+}
+
 export default function JobsListPage() {
     const [jobs, setJobs] = useState<ValidationJob[]>([]);
-    const [rulesById, setRulesById] = useState<Record<string, ValidationRule>>({});
+    const [rulesById, setRulesById] = useState<Record<string, ValidationRule>>(
+        {},
+    );
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -73,28 +117,6 @@ export default function JobsListPage() {
         });
     }, [jobs, rulesById, search, statusFilter]);
 
-    const formatDate = (value: string | null): string => {
-        if (!value) return "—";
-        const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return value;
-        return d.toLocaleString();
-    };
-
-    const statusChipClass = (status: string): string => {
-        switch (status) {
-            case "success":
-                return "border-emerald-500/50 bg-emerald-900/40 text-emerald-100";
-            case "failed":
-                return "border-red-500/50 bg-red-900/40 text-red-100";
-            case "running":
-                return "border-sky-500/50 bg-sky-900/40 text-sky-100";
-            case "pending":
-                return "border-slate-500/60 bg-slate-900/60 text-slate-100";
-            default:
-                return "border-slate-600 bg-slate-900 text-slate-100";
-        }
-    };
-
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center text-sm text-slate-300">
@@ -106,7 +128,7 @@ export default function JobsListPage() {
     if (error) {
         return (
             <div className="space-y-3">
-                <h1 className="text-lg font-semibold text-slate-100">Jobs</h1>
+                <h1 className="text-lg font-semibold text-slate-100">Validation jobs</h1>
                 <div className="rounded-md border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
                     <p className="font-medium">Failed to load jobs</p>
                     <p className="mt-1 text-xs text-red-200/90">{error}</p>
@@ -124,7 +146,7 @@ export default function JobsListPage() {
                     <code className="rounded bg-slate-900 px-1.5 py-0.5 text-xs">
                         GET /validation-jobs?limit=50&amp;offset=0
                     </code>
-                    .
+                    . At a glance you can see which jobs ran on Stripe vs sample data.
                 </p>
             </div>
 
@@ -171,6 +193,12 @@ export default function JobsListPage() {
                             Rule
                         </th>
                         <th className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Source
+                        </th>
+                        <th className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Value
+                        </th>
+                        <th className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400">
                             Status
                         </th>
                         <th className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -187,6 +215,14 @@ export default function JobsListPage() {
                     <tbody>
                     {filteredJobs.map((job) => {
                         const rule = rulesById[job.validation_rule_id];
+                        const backingSource = job.summary?.backing_source as
+                            | string
+                            | undefined;
+                        const value =
+                            job.summary && job.summary.value !== undefined
+                                ? String(job.summary.value)
+                                : "—";
+
                         return (
                             <tr
                                 key={job.id}
@@ -214,10 +250,20 @@ export default function JobsListPage() {
                       </span>
                                     )}
                                 </td>
+                                <td className="px-4 py-2 text-xs">
+                    <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${backingSourceBadgeClass(
+                            backingSource,
+                        )}`}
+                    >
+                      {backingSourceLabel(backingSource)}
+                    </span>
+                                </td>
+                                <td className="px-4 py-2 text-xs text-slate-200">{value}</td>
                                 <td className="px-4 py-2">
                     <span
                         className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusChipClass(
-                            job.status
+                            job.status,
                         )}`}
                     >
                       {job.status}
@@ -239,7 +285,7 @@ export default function JobsListPage() {
                     {filteredJobs.length === 0 && (
                         <tr>
                             <td
-                                colSpan={6}
+                                colSpan={8}
                                 className="px-4 py-6 text-center text-xs text-slate-400"
                             >
                                 No jobs match the current filters.

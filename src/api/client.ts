@@ -1,4 +1,4 @@
-const API_BASE_URL =
+export const API_BASE_URL =
     import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const TOKEN_KEY = "vv_access_token";
@@ -138,6 +138,14 @@ export function apiPost<T>(
     options?: Omit<RequestOptions, "body">,
 ): Promise<T> {
     return apiRequest<T>("POST", path, { ...options, body });
+}
+
+export function apiPatch<T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, "body">,
+): Promise<T> {
+    return apiRequest<T>("PATCH", path, { ...options, body });
 }
 
 // --- Auth-specific helpers ---

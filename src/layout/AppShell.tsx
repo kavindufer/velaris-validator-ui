@@ -28,15 +28,15 @@ export default function AppShell() {
 
     const stripeLabel = loading
         ? "Stripe: checking…"
-        : status === "configured"
-            ? "Stripe: configured"
+        : status === "connected"
+            ? "Stripe: connected"
             : status === "error"
                 ? "Stripe: error"
-                : "Stripe: not configured";
+                : "Stripe: not connected";
 
     const stripeClasses = loading
         ? "border-slate-500 text-slate-300"
-        : status === "configured"
+        : status === "connected"
             ? "border-emerald-500 text-emerald-300"
             : status === "error"
                 ? "border-rose-500 text-rose-300"

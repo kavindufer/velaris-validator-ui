@@ -2,42 +2,90 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, apiGet, apiPatch } from "../api/client";
-import type { RuleStatus, ValidationRule } from "../types/api";
+import type {
+    RuleScheduleType,
+    RuleStatus,
+    ValidationRule,
+} from "../types/api";
+import {
+    fetchStripeResources,
+    fetchVelarisObjects,
+    type StripeResourceMeta,
+    type VelarisObjectMeta,
+} from "../api/metadata";
 
-type RouteParams = {
-    ruleId: string;
-};
+const FALLBACK_VELARIS_OBJECTS: VelarisObjectMeta[] = [
+    { api_name: "organization", label: "Organization" },
+    { api_name: "account", label: "Account" },
+    { api_name: "contact", label: "Contact" },
+    { api_name: "pipeline", label: "Pipeline" },
+    { api_name: "invoice", label: "Invoice" },
+];
+
+const FALLBACK_STRIPE_RESOURCES: StripeResourceMeta[] = [
+    { system: "stripe", resource: "customers", label: "Stripe Customers" },
+    { system: "stripe", resource: "invoices", label: "Stripe Invoices" },
+];
 
 export default function RuleEditPage() {
-    const { ruleId } = useParams<RouteParams>();
+    // Be forgiving about the param name: allow both :id and :ruleId
+    const params = useParams();
+    const ruleId = (params.id ?? params.ruleId ?? "").trim();
+
     const navigate = useNavigate();
+
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [mappingId, setMappingId] = useState("");
     const [status, setStatus] = useState<RuleStatus>("draft");
-    const [dslText, setDslText] = useState("");
+    const [dslText, setDslText] = useState<string>("");
 
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [submitting, setSubmitting] = useState(false);
-    const [formError, setFormError] = useState<string | null>(null);
     const [apiError, setApiError] = useState<string | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
+    // metadata
+    const [velarisObjects, setVelarisObjects] = useState<VelarisObjectMeta[]>(
+        FALLBACK_VELARIS_OBJECTS,
+    );
+    const [stripeResources, setStripeResources] = useState<StripeResourceMeta[]>(
+        FALLBACK_STRIPE_RESOURCES,
+    );
+
+    const [velarisObject, setVelarisObject] = useState<string>("invoice");
+    const [sourceSystem] = useState<string>("stripe");
+    const [sourceResource, setSourceResource] = useState<string>("invoices");
+
+    const [joinVelarisField, setJoinVelarisField] =
+        useState<string>("stripe_invoice_id");
+    const [joinSourceField, setJoinSourceField] = useState<string>("id");
+    const [joinDescription, setJoinDescription] = useState<string>(
+        "velaris.invoice.stripe_invoice_id == stripe.invoice.id",
+    );
+
+    const [scheduleType, setScheduleType] =
+        useState<RuleScheduleType>("manual");
+    const [nextScheduledRunAt, setNextScheduledRunAt] = useState<string | null>(
+        null,
+    );
+    const [metadataLoading, setMetadataLoading] = useState(false);
+
+    // Load rule
     useEffect(() => {
         let cancelled = false;
 
-        const load = async () => {
+        async function load() {
             if (!ruleId) {
-                setLoadError("Missing rule id in URL.");
-                setLoading(false);
+                setLoadError("Missing rule id.");
+                setIsLoading(false);
                 return;
             }
 
             try {
-                setLoading(true);
-                setLoadError(null);
-
+                setIsLoading(true);
                 const rule = await apiGet<ValidationRule>(
                     `/validation-rules/${encodeURIComponent(ruleId)}`,
                 );
@@ -47,35 +95,106 @@ export default function RuleEditPage() {
                 setName(rule.name);
                 setDescription(rule.description ?? "");
                 setMappingId(rule.mapping_id ?? "");
-                setStatus(rule.status);
-                setDslText(JSON.stringify(rule.dsl, null, 2));
+                setStatus(rule.status as RuleStatus);
+                setDslText(JSON.stringify(rule.dsl ?? {}, null, 2));
+
+                setVelarisObject(rule.velaris_object ?? "invoice");
+                setSourceResource(rule.source_resource ?? "invoices");
+
+                if (rule.join_hint) {
+                    setJoinVelarisField(
+                        rule.join_hint.velaris_field ?? "stripe_invoice_id",
+                    );
+                    setJoinSourceField(rule.join_hint.source_field ?? "id");
+                    setJoinDescription(rule.join_hint.description ?? "");
+                }
+
+                setScheduleType(
+                    (rule.schedule_type as RuleScheduleType) ?? "manual",
+                );
+                setNextScheduledRunAt(rule.next_scheduled_run_at ?? null);
             } catch (err) {
-                if (!cancelled) {
-                    const msg =
-                        err instanceof Error ? err.message : "Failed to load rule.";
-                    setLoadError(msg);
+                if (err instanceof ApiError) {
+                    setLoadError(err.message);
+                } else if (err instanceof Error) {
+                    setLoadError(err.message);
+                } else {
+                    setLoadError("Failed to load rule.");
                 }
             } finally {
                 if (!cancelled) {
-                    setLoading(false);
+                    setIsLoading(false);
                 }
             }
-        };
+        }
 
-        void load();
+        load();
 
         return () => {
             cancelled = true;
         };
     }, [ruleId]);
 
-    async function handleSubmit(event: FormEvent) {
-        event.preventDefault();
+    // Load metadata options
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadMetadata() {
+            setMetadataLoading(true);
+            try {
+                const [velaris, stripe] = await Promise.all([
+                    fetchVelarisObjects(),
+                    fetchStripeResources(),
+                ]);
+
+                if (cancelled) return;
+
+                if (velaris && velaris.length) {
+                    setVelarisObjects(velaris);
+                    const existing = velaris.find((v) => v.api_name === velarisObject);
+                    if (!existing) {
+                        setVelarisObject(
+                            velaris.find((v) => v.api_name === "invoice")?.api_name ??
+                            velaris[0].api_name,
+                        );
+                    }
+                }
+
+                if (stripe && stripe.length) {
+                    setStripeResources(stripe);
+                    const existing = stripe.find((r) => r.resource === sourceResource);
+                    if (!existing) {
+                        setSourceResource(
+                            stripe.find((r) => r.resource === "invoices")?.resource ??
+                            stripe[0].resource,
+                        );
+                    }
+                }
+            } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn("Failed to load metadata, using fallbacks.", err);
+            } finally {
+                if (!cancelled) {
+                    setMetadataLoading(false);
+                }
+            }
+        }
+
+        loadMetadata();
+
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    async function handleSubmit(e: FormEvent) {
+        e.preventDefault();
         setFormError(null);
         setApiError(null);
 
         if (!ruleId) {
-            setFormError("Missing rule id in URL.");
+            setFormError("Missing rule id.");
             return;
         }
 
@@ -85,189 +204,370 @@ export default function RuleEditPage() {
             return;
         }
 
-        let dslObj: Record<string, unknown>;
+        let dslObj: unknown;
         try {
-            const parsed = JSON.parse(dslText) as unknown;
-            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-                setFormError(
-                    'DSL must be a JSON object (e.g. { "source": "invoices", ... }).',
-                );
-                return;
-            }
-            dslObj = parsed as Record<string, unknown>;
-        } catch (err) {
-            const msg =
-                err instanceof Error ? err.message : "DSL JSON could not be parsed.";
-            setFormError(`Invalid DSL JSON: ${msg}`);
+            dslObj = JSON.parse(dslText);
+        } catch {
+            setFormError("DSL must be valid JSON.");
             return;
         }
 
+        const payload: Record<string, unknown> = {
+            name: trimmedName,
+            description: description.trim() || null,
+            mapping_id: mappingId.trim() || null,
+            status,
+            dsl: dslObj,
+        };
+
+        if (velarisObject) {
+            payload.velaris_object = velarisObject;
+        }
+        if (sourceSystem) {
+            payload.source_system = sourceSystem;
+        }
+        if (sourceResource) {
+            payload.source_resource = sourceResource;
+        }
+
+        const cleanedJoinVelaris = joinVelarisField.trim();
+        const cleanedJoinSource = joinSourceField.trim();
+        const cleanedJoinDescription = joinDescription.trim();
+
+        if (cleanedJoinVelaris && cleanedJoinSource) {
+            payload.join_hint = {
+                velaris_field: cleanedJoinVelaris,
+                source_field: cleanedJoinSource,
+                ...(cleanedJoinDescription
+                    ? { description: cleanedJoinDescription }
+                    : {}),
+            };
+        }
+
+        payload.schedule_type = scheduleType;
+
         try {
-            setSubmitting(true);
-
-            const updated = await apiPatch<ValidationRule>(
+            setSaving(true);
+            await apiPatch<ValidationRule>(
                 `/validation-rules/${encodeURIComponent(ruleId)}`,
-                {
-                    name: trimmedName,
-                    description: description.trim() || null,
-                    mapping_id: mappingId.trim() || null,
-                    status,
-                    dsl: dslObj,
-                },
+                payload,
             );
-
-            navigate(`/rules/${encodeURIComponent(updated.id)}`, { replace: true });
+            navigate("/rules");
         } catch (err) {
             if (err instanceof ApiError) {
                 setApiError(err.message);
             } else if (err instanceof Error) {
                 setApiError(err.message);
             } else {
-                setApiError("Unexpected error while saving rule.");
+                setApiError("Failed to update rule.");
             }
         } finally {
-            setSubmitting(false);
+            setSaving(false);
         }
     }
 
-    if (loading) {
-        return (
-            <div className="flex h-full items-center justify-center text-sm text-slate-300">
-                Loading rule…
-            </div>
-        );
-    }
+    const currentVelarisLabel =
+        velarisObjects.find((v) => v.api_name === velarisObject)?.label ??
+        velarisObject;
 
-    if (loadError) {
-        return (
-            <div className="space-y-3">
-                <h1 className="text-lg font-semibold text-slate-100">Edit rule</h1>
-                <div className="rounded-md border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-                    <p className="font-medium">Failed to load rule</p>
-                    <p className="mt-1 text-xs text-red-200/90">{loadError}</p>
-                </div>
-            </div>
-        );
-    }
+    const currentStripeLabel =
+        stripeResources.find((r) => r.resource === sourceResource)?.label ??
+        sourceResource;
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1">
-                    <button
-                        type="button"
-                        onClick={() => navigate(-1)}
-                        className="text-xs text-slate-400 hover:text-slate-200"
-                    >
-                        &larr; Back to rule
-                    </button>
-                    <h1 className="text-lg font-semibold text-slate-100">Edit rule</h1>
-                    <p className="text-sm text-slate-400">
-                        Update the rule metadata and DSL JSON. This will call{" "}
-                        <code className="rounded bg-slate-900 px-1.5 py-0.5 text-xs">
-                            PATCH /validation-rules/{ruleId}
-                        </code>
-                        .
+            <button
+                type="button"
+                onClick={() => navigate("/rules")}
+                className="text-xs text-sky-300 hover:underline"
+            >
+                ← Back to rules
+            </button>
+
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div>
+                    <h1 className="text-lg font-semibold text-slate-50">
+                        Edit validation rule
+                    </h1>
+                    <p className="text-xs text-slate-400">
+                        Update the rule definition, metadata, and schedule.
                     </p>
                 </div>
             </div>
 
-            <form
-                onSubmit={handleSubmit}
-                className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
-            >
-                <div className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-300">
-                            Name
-                        </label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-500"
-                            required
-                        />
-                    </div>
+            {isLoading && (
+                <div className="rounded-md border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-200">
+                    Loading rule…
+                </div>
+            )}
 
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-300">
-                            Description
-                        </label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={3}
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-500"
-                        />
-                    </div>
+            {loadError && !isLoading && (
+                <div className="rounded-md border border-rose-500 bg-rose-950/50 p-3 text-xs text-rose-100">
+                    {loadError}
+                </div>
+            )}
 
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-300">
-                            Mapping ID
-                        </label>
-                        <input
-                            type="text"
-                            value={mappingId}
-                            onChange={(e) => setMappingId(e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-500"
-                            placeholder="map_stripe_invoices"
-                        />
-                    </div>
-
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-300">
-                            Status
-                        </label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as RuleStatus)}
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-500"
-                        >
-                            <option value="draft">draft</option>
-                            <option value="verified">verified</option>
-                            <option value="active">active</option>
-                        </select>
-                    </div>
-
+            {!isLoading && !loadError && (
+                <>
                     {formError && (
-                        <div className="rounded-md border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
+                        <div className="rounded-md border border-rose-500 bg-rose-950/50 p-3 text-xs text-rose-100">
                             {formError}
                         </div>
                     )}
+
                     {apiError && (
-                        <div className="rounded-md border border-red-500/40 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                        <div className="rounded-md border border-amber-500 bg-amber-950/40 p-3 text-xs text-amber-100">
                             {apiError}
                         </div>
                     )}
 
-                    <button
-                        type="submit"
-                        disabled={submitting}
-                        className="mt-2 inline-flex items-center justify-center rounded-md bg-sky-500 px-4 py-1.5 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    <form
+                        onSubmit={handleSubmit}
+                        className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]"
                     >
-                        {submitting ? "Saving…" : "Save changes"}
-                    </button>
-                </div>
+                        {/* Left column */}
+                        <div className="space-y-3">
+                            {/* Name */}
+                            <div className="space-y-1">
+                                <label className="block text-xs font-medium text-slate-200">
+                                    Name
+                                </label>
+                                <input
+                                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                />
+                            </div>
 
-                <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            DSL JSON
-                        </h2>
-                        <span className="text-[10px] text-slate-500">
-                            Edit carefully – must be valid JSON
-                        </span>
-                    </div>
-                    <textarea
-                        value={dslText}
-                        onChange={(e) => setDslText(e.target.value)}
-                        rows={22}
-                        className="font-mono text-xs w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
-                        spellCheck={false}
-                    />
-                </div>
-            </form>
+                            {/* Description */}
+                            <div className="space-y-1">
+                                <label className="block text-xs font-medium text-slate-200">
+                                    Description
+                                </label>
+                                <textarea
+                                    className="h-16 w-full resize-none rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Mapping ID */}
+                            <div className="space-y-1">
+                                <label className="block text-xs font-medium text-slate-200">
+                                    Mapping ID (optional)
+                                </label>
+                                <input
+                                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                    value={mappingId}
+                                    onChange={(e) => setMappingId(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Status */}
+                            <div className="space-y-1">
+                                <label className="block text-xs font-medium text-slate-200">
+                                    Status
+                                </label>
+                                <select
+                                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                    value={status}
+                                    onChange={(e) => setStatus(e.target.value as RuleStatus)}
+                                >
+                                    <option value="draft">Draft</option>
+                                    <option value="verified">Verified</option>
+                                    <option value="active">Active</option>
+                                </select>
+                            </div>
+
+                            {/* Target & source */}
+                            <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900/40 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs font-medium text-slate-200">
+                                        Target &amp; source
+                                    </p>
+                                    {metadataLoading && (
+                                        <span className="text-[10px] text-slate-500">
+                      Loading options…
+                    </span>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-slate-500">
+                                    Choose which Velaris object this rule reconciles to, and
+                                    which Stripe resource it reads from.
+                                </p>
+
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <label className="block text-[11px] text-slate-300">
+                                            Velaris object
+                                        </label>
+                                        <select
+                                            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                            value={velarisObject}
+                                            onChange={(e) => setVelarisObject(e.target.value)}
+                                        >
+                                            {velarisObjects.map((o) => (
+                                                <option key={o.api_name} value={o.api_name}>
+                                                    {o.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="block text-[11px] text-slate-300">
+                                            Stripe resource
+                                        </label>
+                                        <select
+                                            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                            value={sourceResource}
+                                            onChange={(e) => setSourceResource(e.target.value)}
+                                        >
+                                            {stripeResources.map((r) => (
+                                                <option key={r.resource} value={r.resource}>
+                                                    {r.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <p className="text-[10px] text-slate-500">
+                                    Currently:{" "}
+                                    <span className="font-semibold">
+                    {currentVelarisLabel}
+                  </span>{" "}
+                                    ⇐{" "}
+                                    <span className="font-semibold">
+                    {currentStripeLabel}
+                  </span>{" "}
+                                    via the join fields below.
+                                </p>
+                            </div>
+
+                            {/* Join helper */}
+                            <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900/40 p-3">
+                                <p className="text-xs font-medium text-slate-200">
+                                    Join helper
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                    Document how Stripe and Velaris relate for this rule.
+                                </p>
+
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <label className="block text-[11px] text-slate-300">
+                                            Velaris field
+                                        </label>
+                                        <input
+                                            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                            value={joinVelarisField}
+                                            onChange={(e) => setJoinVelarisField(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="block text-[11px] text-slate-300">
+                                            Stripe field
+                                        </label>
+                                        <input
+                                            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                            value={joinSourceField}
+                                            onChange={(e) => setJoinSourceField(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="block text-[11px] text-slate-300">
+                                        Description (optional)
+                                    </label>
+                                    <input
+                                        className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                        value={joinDescription}
+                                        onChange={(e) => setJoinDescription(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Schedule */}
+                            <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900/40 p-3">
+                                <p className="text-xs font-medium text-slate-200">
+                                    Schedule
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                    Manual rules only run when triggered. Scheduled rules get
+                                    full jobs created automatically.
+                                </p>
+
+                                <div className="space-y-1">
+                                    <label className="block text-[11px] text-slate-300">
+                                        Run schedule
+                                    </label>
+                                    <select
+                                        className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                        value={scheduleType}
+                                        onChange={(e) =>
+                                            setScheduleType(e.target.value as RuleScheduleType)
+                                        }
+                                    >
+                                        <option value="manual">Manual only</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                    </select>
+                                </div>
+
+                                {nextScheduledRunAt && (
+                                    <p className="text-[10px] text-slate-500">
+                                        Next scheduled run:{" "}
+                                        <span className="font-medium text-slate-200">
+                      {new Date(nextScheduledRunAt).toLocaleString()}
+                    </span>
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 pt-2">
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-slate-50 hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {saving ? "Saving…" : "Save changes"}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() => navigate("/rules")}
+                                    className="rounded-md border border-slate-600 bg-transparent px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Right column – DSL JSON */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                                <div>
+                                    <p className="font-medium text-slate-200">
+                                        Rule DSL (JSON)
+                                    </p>
+                                    <p className="text-[10px] text-slate-500">
+                                        Edit the underlying DSL that the worker executes.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <textarea
+                                className="h-[260px] w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs font-mono text-slate-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                                value={dslText}
+                                onChange={(e) => setDslText(e.target.value)}
+                            />
+                        </div>
+                    </form>
+                </>
+            )}
         </div>
     );
 }

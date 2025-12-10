@@ -111,3 +111,38 @@ export interface IntegrationConnection {
     created_at: string;
     updated_at: string;
 }
+
+// --- DV Tasks (Sprint 9) ---
+
+export interface DvTask {
+    id: string;
+    name: string;
+    description: string;
+    target_velaris_object: string;
+    source_system: string;
+    source_resource: string;
+    dedupe_key: string;
+    join_hint: JoinHint | null;
+    is_archived: boolean;
+    archived_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface DvTaskRuleSummary {
+    id: string;
+    name: string;
+    status: RuleStatus;
+    schedule_type: RuleScheduleType;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface DvTaskDetail {
+    task: DvTask;
+    rules: DvTaskRuleSummary[];
+}
+
+export interface RunDvTaskResponse {
+    job_ids: string[];
+}

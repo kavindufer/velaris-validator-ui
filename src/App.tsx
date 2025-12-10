@@ -13,6 +13,11 @@ import AdminOverviewPage from "./pages/admin/AdminOverviewPage";
 import AdminTenantsPage from "./pages/admin/AdminTenantsPage";
 import TenantDetailPage from "./pages/admin/TenantDetailPage";
 
+import DvTasksListPage from "./pages/DvTasksListPage";
+import DvTaskDetailPage from "./pages/DvTaskDetailPage";
+import DvTaskNewPage from "./pages/DvTaskNewPage";
+
+
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/routes/AdminRoute";
 import { useAuth } from "./context/AuthContext";
@@ -50,6 +55,11 @@ export default function App() {
                     <Route path="rules/:ruleId" element={<RuleDetailPage />} />
                     <Route path="jobs" element={<JobsListPage />} />
                     <Route path="jobs/:jobId" element={<JobDetailPage />} />
+
+                    {/* DV Tasks (Sprint 9) */}
+                    <Route path="dv-tasks" element={<DvTasksListPage />} />
+                    <Route path="dv-tasks/new" element={<DvTaskNewPage />} />
+                    <Route path="dv-tasks/:taskId" element={<DvTaskDetailPage />} />
 
                     {/* Admin routes (SUPERADMIN only) */}
                     <Route

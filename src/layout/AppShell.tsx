@@ -116,6 +116,12 @@ export default function AppShell() {
                                 // Tenant operators – rules / jobs only
                                 <>
                                     <NavLink
+                                        to="/integrations"
+                                        className={({ isActive }) => tabClass(isActive)}
+                                    >
+                                        Integrations
+                                    </NavLink>
+                                    <NavLink
                                         to="/dv-tasks"
                                         className={({ isActive }) => tabClass(isActive)}
                                     >

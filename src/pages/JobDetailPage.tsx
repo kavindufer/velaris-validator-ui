@@ -32,7 +32,7 @@ function backingSourceBadgeClass(backingSource: string | undefined): string {
 }
 
 function getPreviewColumns(
-    summary: ValidationJobSummary | null
+    summary: ValidationJobSummary | null,
 ): string[] | null {
     const rows = summary?.preview_rows;
     if (!rows || rows.length === 0) return null;
@@ -62,15 +62,15 @@ export default function JobDetailPage() {
                 setError(null);
 
                 const jobData = await apiGet<ValidationJob>(
-                    `/validation-jobs/${encodeURIComponent(jobId)}`
+                    `/validation-jobs/${encodeURIComponent(jobId)}`,
                 );
 
                 let ruleData: ValidationRule | null = null;
                 try {
                     ruleData = await apiGet<ValidationRule>(
                         `/validation-rules/${encodeURIComponent(
-                            jobData.validation_rule_id
-                        )}`
+                            jobData.validation_rule_id,
+                        )}`,
                     );
                 } catch {
                     ruleData = null;
@@ -103,7 +103,7 @@ export default function JobDetailPage() {
     const summary = job?.summary ?? null;
     const previewColumns = useMemo(
         () => getPreviewColumns(summary),
-        [summary]
+        [summary],
     );
 
     if (loading) {
@@ -135,9 +135,8 @@ export default function JobDetailPage() {
         );
     }
 
-    const backingSource = String(
-        summary?.backing_source ?? ""
-    );
+    const backingSource =
+        (summary?.backing_source as string | undefined) ?? undefined;
 
     return (
         <div className="space-y-4">
@@ -172,20 +171,20 @@ export default function JobDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-xs">
-          <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${backingSourceBadgeClass(
-                  backingSource || undefined
-              )}`}
-          >
-            {backingSourceLabel(backingSource || undefined)}
-          </span>
+                    <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${backingSourceBadgeClass(
+                            backingSource,
+                        )}`}
+                    >
+                        {backingSourceLabel(backingSource)}
+                    </span>
 
                     <span className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 font-medium text-slate-100">
-            {job.status}
-          </span>
+                        {job.status}
+                    </span>
                     <span className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 font-medium text-slate-100">
-            {job.run_type}
-          </span>
+                        {job.run_type}
+                    </span>
                 </div>
             </div>
 
@@ -198,7 +197,9 @@ export default function JobDetailPage() {
                     <dl className="mt-3 space-y-2 text-xs">
                         <div className="flex justify-between gap-3">
                             <dt className="text-slate-400">Job ID</dt>
-                            <dd className="font-mono text-slate-200">{job.id}</dd>
+                            <dd className="font-mono text-slate-200">
+                                {job.id}
+                            </dd>
                         </div>
                         <div className="flex justify-between gap-3">
                             <dt className="text-slate-400">Status</dt>
@@ -257,26 +258,34 @@ export default function JobDetailPage() {
                                 </dd>
                             </div>
                             <div className="flex justify-between gap-3">
-                                <dt className="text-slate-400">Rows scanned</dt>
+                                <dt className="text-slate-400">
+                                    Rows scanned
+                                </dt>
                                 <dd className="text-slate-200">
                                     {summary.rows_scanned ?? "—"}
                                 </dd>
                             </div>
                             <div className="flex justify-between gap-3">
-                                <dt className="text-slate-400">Rows matched</dt>
+                                <dt className="text-slate-400">
+                                    Rows matched
+                                </dt>
                                 <dd className="text-slate-200">
                                     {summary.rows_matched ?? "—"}
                                 </dd>
                             </div>
                             <div className="flex justify-between gap-3">
-                                <dt className="text-slate-400">Duration (ms)</dt>
+                                <dt className="text-slate-400">
+                                    Duration (ms)
+                                </dt>
                                 <dd className="text-slate-200">
                                     {summary.duration_ms ?? "—"}
                                 </dd>
                             </div>
                             {summary.stripe_invoice_count !== undefined && (
                                 <div className="flex justify-between gap-3">
-                                    <dt className="text-slate-400">Stripe invoices</dt>
+                                    <dt className="text-slate-400">
+                                        Stripe invoices
+                                    </dt>
                                     <dd className="text-slate-200">
                                         {summary.stripe_invoice_count}
                                     </dd>
@@ -292,45 +301,53 @@ export default function JobDetailPage() {
             </div>
 
             {/* Preview rows table */}
-            {summary?.preview_rows && summary.preview_rows.length > 0 && previewColumns && (
-                <div className="space-y-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Preview rows
-                    </h2>
-                    <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/40">
-                        <table className="min-w-full text-left text-xs">
-                            <thead className="border-b border-slate-800 bg-slate-900">
-                            <tr>
-                                {previewColumns.map((column) => (
-                                    <th
-                                        key={column}
-                                        className="px-3 py-2 font-medium uppercase tracking-wide text-slate-400"
-                                    >
-                                        {column}
-                                    </th>
-                                ))}
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {summary.preview_rows.map((row, index) => (
-                                <tr
-                                    key={index}
-                                    className="border-t border-slate-800/60 hover:bg-slate-800/60"
-                                >
+            {summary?.preview_rows &&
+                summary.preview_rows.length > 0 &&
+                previewColumns && (
+                    <div className="space-y-2">
+                        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Preview rows
+                        </h2>
+                        <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/40">
+                            <table className="min-w-full text-left text-xs">
+                                <thead className="border-b border-slate-800 bg-slate-900">
+                                <tr>
                                     {previewColumns.map((column) => (
-                                        <td key={column} className="px-3 py-2 text-slate-200">
-                                            {String(
-                                                (row as Record<string, unknown>)[column] ?? ""
-                                            )}
-                                        </td>
+                                        <th
+                                            key={column}
+                                            className="px-3 py-2 font-medium uppercase tracking-wide text-slate-400"
+                                        >
+                                            {column}
+                                        </th>
                                     ))}
                                 </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                {summary.preview_rows.map((row, index) => (
+                                    <tr
+                                        key={index}
+                                        className="border-t border-slate-800/60 hover:bg-slate-800/60"
+                                    >
+                                        {previewColumns.map((column) => (
+                                            <td
+                                                key={column}
+                                                className="px-3 py-2 text-slate-200"
+                                            >
+                                                {String(
+                                                    (row as Record<
+                                                        string,
+                                                        unknown
+                                                    >)[column] ?? "",
+                                                )}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
             {job.error_message && (
                 <div className="rounded-md border border-red-500/40 bg-red-950/40 px-4 py-3 text-xs text-red-200">

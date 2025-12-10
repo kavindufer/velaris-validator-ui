@@ -1,6 +1,6 @@
-import { ApiError } from "../../api/client";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ApiError } from "../../api/client";
 import {
     fetchTenantOverview,
     fetchVelarisPublicConfig,
@@ -14,6 +14,7 @@ import type {
     VelarisInternalTokenInfo,
     VelarisAuthType,
 } from "../../api/admin";
+import { adminUpsertTenantStripeIntegration } from "../../api/integrations";
 
 type LoadState = "idle" | "loading" | "error" | "success";
 
@@ -23,6 +24,15 @@ export default function TenantDetailPage() {
     const [data, setData] = useState<TenantOverview | null>(null);
     const [state, setState] = useState<LoadState>("idle");
     const [error, setError] = useState<string | null>(null);
+
+    // Admin Stripe helper
+    const [stripeKey, setStripeKey] = useState("");
+    const [stripeAccountId, setStripeAccountId] = useState("");
+    const [savingStripe, setSavingStripe] = useState(false);
+    const [stripeAdminError, setStripeAdminError] = useState<string | null>(null);
+    const [stripeAdminSuccess, setStripeAdminSuccess] = useState<string | null>(
+        null,
+    );
 
     // Velaris public config
     const [velarisPublic, setVelarisPublic] =
@@ -127,6 +137,7 @@ export default function TenantDetailPage() {
             void loadVelarisPublic(tenantId);
             void loadVelarisInternal(tenantId);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tenantId]);
 
     if (!tenantId) {
@@ -198,6 +209,47 @@ export default function TenantDetailPage() {
         }
     }
 
+    const handleAdminStripeSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!tenantId) return;
+
+        setStripeAdminError(null);
+        setStripeAdminSuccess(null);
+
+        if (!stripeKey.trim()) {
+            setStripeAdminError("Stripe secret key is required.");
+            return;
+        }
+
+        setSavingStripe(true);
+        try {
+            await adminUpsertTenantStripeIntegration(tenantId, {
+                api_key: stripeKey.trim(),
+                account_id: stripeAccountId.trim() || null,
+            });
+            setStripeAdminSuccess("Stripe credentials updated for this tenant.");
+            setStripeKey("");
+            setStripeAccountId("");
+            // Refresh overview so has_stripe reflects latest state
+            void loadOverview(tenantId);
+        } catch (err) {
+            console.error("Failed to save tenant Stripe credentials", err);
+            if (err instanceof ApiError) {
+                setStripeAdminError(
+                    `Failed to save Stripe credentials (${err.status}): ${err.message}`,
+                );
+            } else if (err instanceof Error) {
+                setStripeAdminError(err.message);
+            } else {
+                setStripeAdminError(
+                    "Failed to save Stripe credentials. Check logs.",
+                );
+            }
+        } finally {
+            setSavingStripe(false);
+        }
+    };
+
     return (
         <div className="flex flex-col gap-4 p-6">
             {/* Header */}
@@ -218,15 +270,16 @@ export default function TenantDetailPage() {
                         {tenant?.id ?? tenantId}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <span
-                className={
-                    tenant?.has_stripe
-                        ? "inline-flex items-center rounded-full border border-emerald-700/50 bg-emerald-950/60 px-2 py-0.5 text-emerald-200"
-                        : "inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900 px-2 py-0.5 text-slate-300"
-                }
-            >
-              Stripe: {tenant?.has_stripe ? "Connected" : "Not connected"}
-            </span>
+                        <span
+                            className={
+                                tenant?.has_stripe
+                                    ? "inline-flex items-center rounded-full border border-emerald-700/50 bg-emerald-950/60 px-2 py-0.5 text-emerald-200"
+                                    : "inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900 px-2 py-0.5 text-slate-300"
+                            }
+                        >
+                            Stripe:{" "}
+                            {tenant?.has_stripe ? "Connected" : "Not connected"}
+                        </span>
                         <span
                             className={
                                 tenant?.has_velaris
@@ -234,8 +287,11 @@ export default function TenantDetailPage() {
                                     : "inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900 px-2 py-0.5 text-slate-300"
                             }
                         >
-              Velaris: {tenant?.has_velaris ? "Connected" : "Not connected"}
-            </span>
+                            Velaris:{" "}
+                            {tenant?.has_velaris
+                                ? "Connected"
+                                : "Not connected"}
+                        </span>
                     </div>
                 </div>
 
@@ -287,13 +343,17 @@ export default function TenantDetailPage() {
                                 </dd>
                             </div>
                             <div className="flex items-center justify-between">
-                                <dt className="text-slate-400">Jobs (last 24h)</dt>
+                                <dt className="text-slate-400">
+                                    Jobs (last 24h)
+                                </dt>
                                 <dd className="font-semibold text-slate-100">
                                     {data.jobs_last_24h}
                                 </dd>
                             </div>
                             <div className="flex items-center justify-between">
-                                <dt className="text-slate-400">Failed (last 24h)</dt>
+                                <dt className="text-slate-400">
+                                    Failed (last 24h)
+                                </dt>
                                 <dd
                                     className={
                                         data.jobs_failed_last_24h > 0
@@ -314,17 +374,25 @@ export default function TenantDetailPage() {
                                 Recent jobs
                             </h2>
                             <span className="text-xs text-slate-500">
-                Showing up to {data.latest_jobs.length} jobs
-              </span>
+                                Showing up to {data.latest_jobs.length} jobs
+                            </span>
                         </div>
                         <div className="overflow-hidden rounded-lg border border-slate-800">
                             <table className="min-w-full text-sm">
                                 <thead className="bg-slate-900/80 text-xs uppercase tracking-wide text-slate-400">
                                 <tr>
-                                    <th className="px-3 py-2 text-left">Job ID</th>
-                                    <th className="px-3 py-2 text-left">Status</th>
-                                    <th className="px-3 py-2 text-left">Run type</th>
-                                    <th className="px-3 py-2 text-left">Created at</th>
+                                    <th className="px-3 py-2 text-left">
+                                        Job ID
+                                    </th>
+                                    <th className="px-3 py-2 text-left">
+                                        Status
+                                    </th>
+                                    <th className="px-3 py-2 text-left">
+                                        Run type
+                                    </th>
+                                    <th className="px-3 py-2 text-left">
+                                        Created at
+                                    </th>
                                 </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800">
@@ -332,28 +400,32 @@ export default function TenantDetailPage() {
                                     <tr key={job.id}>
                                         <td className="px-3 py-2 font-mono text-xs text-sky-300">
                                             <Link
-                                                to={`/jobs/${encodeURIComponent(job.id)}`}
+                                                to={`/jobs/${encodeURIComponent(
+                                                    job.id,
+                                                )}`}
                                                 className="hover:underline"
                                             >
                                                 {job.id}
                                             </Link>
                                         </td>
                                         <td className="px-3 py-2">
-                        <span
-                            className={
-                                job.status === "failed"
-                                    ? "inline-flex rounded-full border border-red-600/60 bg-red-950/60 px-2 py-0.5 text-xs font-medium text-red-200"
-                                    : "inline-flex rounded-full border border-emerald-600/60 bg-emerald-950/60 px-2 py-0.5 text-xs font-medium text-emerald-200"
-                            }
-                        >
-                          {job.status}
-                        </span>
+                                                <span
+                                                    className={
+                                                        job.status === "failed"
+                                                            ? "inline-flex rounded-full border border-red-600/60 bg-red-950/60 px-2 py-0.5 text-xs font-medium text-red-200"
+                                                            : "inline-flex rounded-full border border-emerald-600/60 bg-emerald-950/60 px-2 py-0.5 text-xs font-medium text-emerald-200"
+                                                    }
+                                                >
+                                                    {job.status}
+                                                </span>
                                         </td>
                                         <td className="px-3 py-2 text-slate-200">
                                             {job.run_type}
                                         </td>
                                         <td className="px-3 py-2 text-sm text-slate-400">
-                                            {new Date(job.created_at).toLocaleString()}
+                                            {new Date(
+                                                job.created_at,
+                                            ).toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
@@ -375,18 +447,84 @@ export default function TenantDetailPage() {
                 </div>
             )}
 
+            {/* Admin Stripe helper */}
+            <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950 p-4">
+                <h2 className="text-sm font-semibold text-slate-100">
+                    Stripe credentials (admin helper)
+                </h2>
+                <p className="mt-1 text-xs text-slate-400">
+                    Set or update Stripe credentials for this tenant from the
+                    platform side. Tenant admins can also manage their own keys
+                    from the Integrations page in their workspace.
+                </p>
+
+                {stripeAdminError && (
+                    <div className="mt-3 rounded-lg border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+                        {stripeAdminError}
+                    </div>
+                )}
+                {stripeAdminSuccess && (
+                    <div className="mt-3 rounded-lg border border-emerald-500/50 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100">
+                        {stripeAdminSuccess}
+                    </div>
+                )}
+
+                <form
+                    onSubmit={handleAdminStripeSave}
+                    className="mt-3 grid gap-3 md:grid-cols-3"
+                >
+                    <div className="space-y-1 md:col-span-2">
+                        <label className="block text-xs font-medium text-slate-200">
+                            Stripe secret key
+                        </label>
+                        <input
+                            type="password"
+                            value={stripeKey}
+                            onChange={(e) => setStripeKey(e.target.value)}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="sk_test_..."
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="block text-xs font-medium text-slate-200">
+                            Stripe account ID (optional)
+                        </label>
+                        <input
+                            type="text"
+                            value={stripeAccountId}
+                            onChange={(e) =>
+                                setStripeAccountId(e.target.value)
+                            }
+                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="acct_..."
+                        />
+                    </div>
+                    <div className="md:col-span-3 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={savingStripe}
+                            className="inline-flex items-center rounded-lg border border-sky-500 bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {savingStripe
+                                ? "Saving…"
+                                : "Save Stripe credentials"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             {/* Velaris configuration */}
             <section className="mt-4 grid gap-4 md:grid-cols-2">
                 {/* Velaris public */}
                 <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify_between gap-2">
                         <div>
                             <h2 className="text-sm font-semibold text-slate-100">
                                 Velaris public API
                             </h2>
                             <p className="mt-1 text-xs text-slate-400">
-                                Configure the tenant&apos;s Velaris public API connection
-                                (Basic or Bearer token).
+                                Configure the tenant&apos;s Velaris public API
+                                connection (Basic or Bearer token).
                             </p>
                         </div>
                         <span
@@ -396,8 +534,10 @@ export default function TenantDetailPage() {
                                     : "inline-flex rounded-full border border-slate-700/60 bg-slate-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300"
                             }
                         >
-              {velarisPublic?.is_configured ? "Configured" : "Not configured"}
-            </span>
+                            {velarisPublic?.is_configured
+                                ? "Configured"
+                                : "Not configured"}
+                        </span>
                     </div>
 
                     {vpState === "error" && vpError && (
@@ -417,7 +557,9 @@ export default function TenantDetailPage() {
                             <input
                                 type="url"
                                 value={vpBaseUrl}
-                                onChange={(e) => setVpBaseUrl(e.target.value)}
+                                onChange={(e) =>
+                                    setVpBaseUrl(e.target.value)
+                                }
                                 className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
                             />
                         </div>
@@ -429,7 +571,9 @@ export default function TenantDetailPage() {
                             <select
                                 value={vpAuthType}
                                 onChange={(e) =>
-                                    setVpAuthType(e.target.value as VelarisAuthType)
+                                    setVpAuthType(
+                                        e.target.value as VelarisAuthType,
+                                    )
                                 }
                                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500"
                             >
@@ -457,8 +601,8 @@ export default function TenantDetailPage() {
                                 <p className="mt-1 text-[11px] text-slate-500">
                                     Currently stored token ends with{" "}
                                     <span className="font-mono">
-                    ••••{velarisPublic.token_last4}
-                  </span>
+                                        ••••{velarisPublic.token_last4}
+                                    </span>
                                     .
                                 </p>
                             )}
@@ -469,7 +613,9 @@ export default function TenantDetailPage() {
                             disabled={vpSaving}
                             className="mt-1 inline-flex items-center rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-sky-50 hover:bg-sky-500 disabled:opacity-60"
                         >
-                            {vpSaving ? "Saving…" : "Save Velaris public config"}
+                            {vpSaving
+                                ? "Saving…"
+                                : "Save Velaris public config"}
                         </button>
                     </form>
                 </div>
@@ -482,18 +628,19 @@ export default function TenantDetailPage() {
                                 Velaris internal token
                             </h2>
                             <p className="mt-1 text-xs text-slate-400">
-                                Optional internal-only token for bulk Velaris operations.
+                                Optional internal-only token for bulk Velaris
+                                operations.
                             </p>
                         </div>
                         <span
                             className={
                                 viInfo?.is_set
-                                    ? "inline-flex rounded-full border border-emerald-600/60 bg-emerald-950/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200"
-                                    : "inline-flex rounded-full border border-slate-700/60 bg-slate-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300"
+                                    ? "inline-flex rounded_full border border-emerald-600/60 bg-emerald-950/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200"
+                                    : "inline-flex rounded_full border border-slate-700/60 bg-slate-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300"
                             }
                         >
-              {viInfo?.is_set ? "Configured" : "Not configured"}
-            </span>
+                            {viInfo?.is_set ? "Configured" : "Not configured"}
+                        </span>
                     </div>
 
                     {viState === "error" && viError && (
@@ -505,18 +652,20 @@ export default function TenantDetailPage() {
                     <div className="mt-2 text-xs text-slate-400">
                         {viInfo?.is_set ? (
                             <>
-                                Token is stored securely. We never show the full value –
-                                only the last 4 characters.
+                                Token is stored securely. We never show the full
+                                value – only the last 4 characters.
                                 <br />
                                 Current token ends with{" "}
                                 <span className="font-mono">
-                  ••••{viInfo.last4 ?? "????"}
-                </span>
+                                    ••••{viInfo.last4 ?? "????"}
+                                </span>
                                 {viInfo.updated_at && (
                                     <>
                                         {" "}
                                         (updated{" "}
-                                        {new Date(viInfo.updated_at).toLocaleString()}
+                                        {new Date(
+                                            viInfo.updated_at,
+                                        ).toLocaleString()}
                                         ).
                                     </>
                                 )}

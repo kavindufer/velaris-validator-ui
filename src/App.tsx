@@ -17,6 +17,8 @@ import DvTasksListPage from "./pages/DvTasksListPage";
 import DvTaskDetailPage from "./pages/DvTaskDetailPage";
 import DvTaskNewPage from "./pages/DvTaskNewPage";
 
+import IntegrationsPage from "./pages/IntegrationsPage";
+
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/routes/AdminRoute";
@@ -60,6 +62,9 @@ export default function App() {
                     <Route path="dv-tasks" element={<DvTasksListPage />} />
                     <Route path="dv-tasks/new" element={<DvTaskNewPage />} />
                     <Route path="dv-tasks/:taskId" element={<DvTaskDetailPage />} />
+
+                    {/* Integrations */}
+                    <Route path="integrations" element={<IntegrationsPage />} />
 
                     {/* Admin routes (SUPERADMIN only) */}
                     <Route

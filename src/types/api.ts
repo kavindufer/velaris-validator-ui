@@ -18,6 +18,8 @@ export interface ValidationRule {
     dsl: SimpleValidationRule;
     created_at: string;
     updated_at: string;
+    archived_at: string | null;
+    archived_by_user_id: string | null;
 }
 
 export type JobStatus =
@@ -57,6 +59,8 @@ export interface ValidationJob {
     finished_at: string | null;
     summary: ValidationJobSummary | null;
     error_message: string | null;
+    archived_at: string | null;
+    archived_by_user_id: string | null;
 }
 
 export interface IntegrationConnection {
